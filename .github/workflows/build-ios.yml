@@ -1,0 +1,183 @@
+name: Build iOS IPA
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+    inputs:
+      build_configuration:
+        description: 'Xcode build configuration (Release or Debug)'
+        required: false
+        default: 'Release'
+      export_method:
+        description: 'IPA distribution method (app-store, ad-hoc, development, enterprise)'
+        required: false
+        default: 'app-store'
+
+jobs:
+  build-ios:
+    name: Build iOS .ipa
+    runs-on: macos-latest
+
+    env:
+      BUILD_CONFIG: ${{ github.event.inputs.build_configuration || 'Release' }}
+      EXPORT_METHOD: ${{ github.event.inputs.export_method || 'app-store' }}
+
+    steps:
+      - name: 1. Checkout repository
+        uses: actions/checkout@v4
+
+      - name: 2. Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: 3. Set up Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: 4. Set up CocoaPods & Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.2'
+          bundler-cache: true
+
+      - name: 5. Install Node Dependencies
+        run: |
+          npm ci || npm install
+
+      - name: 6. Run TypeScript Typecheck
+        run: |
+          npx tsc --noEmit
+
+      - name: 7. Install Apple Certificate & Provisioning Profile (if secrets configured)
+        env:
+          BUILD_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
+          P12_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          BUILD_PROVISION_PROFILE_BASE64: ${{ secrets.PROVISIONING_PROFILE_BASE64 }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD || 'temporary-ci-keychain-pass' }}
+        run: |
+          if [ -n "$BUILD_CERTIFICATE_BASE64" ] && [ -n "$BUILD_PROVISION_PROFILE_BASE64" ]; then
+            echo "==> Configuring iOS Code Signing from GitHub Secrets..."
+            CERTIFICATE_PATH=$RUNNER_TEMP/build_certificate.p12
+            PP_PATH=$RUNNER_TEMP/build_pp.mobileprovision
+            KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
+
+            # Decode certificate and provisioning profile
+            echo -n "$BUILD_CERTIFICATE_BASE64" | base64 --decode -o "$CERTIFICATE_PATH"
+            echo -n "$BUILD_PROVISION_PROFILE_BASE64" | base64 --decode -o "$PP_PATH"
+
+            # Create temporary build keychain
+            security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+            security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+            security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+            # Import certificate to keychain
+            security import "$CERTIFICATE_PATH" -P "$P12_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+            security list-keychain -d user -s "$KEYCHAIN_PATH"
+
+            # Apply provisioning profile to system directory
+            mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
+            cp "$PP_PATH" ~/Library/MobileDevice/Provisioning\ Profiles/
+            echo "==> Code signing assets successfully configured."
+          else
+            echo "==> Note: APPLE_CERTIFICATE_BASE64 or PROVISIONING_PROFILE_BASE64 not detected."
+            echo "==> Will generate unsigned/development build archive."
+          fi
+
+      - name: 8. Expo Prebuild (Generate Native iOS Project)
+        run: |
+          npx expo prebuild --platform ios --clean
+
+      - name: 9. Install CocoaPods Dependencies
+        run: |
+          cd ios
+          pod install --repo-update
+
+      - name: 10. Update ExportOptions.plist with Dynamic Config
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID || 'TEAMID12345' }}
+        run: |
+          mkdir -p build
+          cat <<EOF > build/ExportOptions.plist
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>method</key>
+              <string>${EXPORT_METHOD}</string>
+              <key>teamID</key>
+              <string>${APPLE_TEAM_ID}</string>
+              <key>signingStyle</key>
+              <string>automatic</string>
+              <key>stripSwiftSymbols</key>
+              <true/>
+              <key>compileBitcode</key>
+              <false/>
+          </dict>
+          </plist>
+          EOF
+
+      - name: 11. Build and Archive iOS App (.xcarchive)
+        run: |
+          WORKSPACE_NAME=$(find ios -name "*.xcworkspace" -maxdepth 1 | head -n 1)
+          SCHEME_NAME=$(xcodebuild -workspace "$WORKSPACE_NAME" -list -json | grep -o '"targets" : \[[^]]*\]' | head -n 1 | sed -E 's/.*"([^"]+)".*/\1/' || echo "KMTracker")
+          echo "Building workspace: $WORKSPACE_NAME with scheme: $SCHEME_NAME"
+
+          if [ -n "${{ secrets.APPLE_CERTIFICATE_BASE64 }}" ]; then
+            xcodebuild archive \
+              -workspace "$WORKSPACE_NAME" \
+              -scheme "$SCHEME_NAME" \
+              -configuration "$BUILD_CONFIG" \
+              -archivePath build/KMTracker.xcarchive \
+              -allowProvisioningUpdates \
+              CODE_SIGN_STYLE="Manual"
+          else
+            # Unsigned archive for testing/simulators if secrets not yet provided
+            xcodebuild archive \
+              -workspace "$WORKSPACE_NAME" \
+              -scheme "$SCHEME_NAME" \
+              -configuration "$BUILD_CONFIG" \
+              -archivePath build/KMTracker.xcarchive \
+              CODE_SIGNING_ALLOWED=NO \
+              CODE_SIGNING_REQUIRED=NO \
+              CODE_SIGN_IDENTITY=""
+          fi
+
+      - name: 12. Export .ipa Package
+        run: |
+          mkdir -p build/output
+          if [ -n "${{ secrets.APPLE_CERTIFICATE_BASE64 }}" ]; then
+            xcodebuild -exportArchive \
+              -archivePath build/KMTracker.xcarchive \
+              -exportPath build/output \
+              -exportOptionsPlist build/ExportOptions.plist \
+              -allowProvisioningUpdates
+          else
+            # Package unsigned app payload as test .ipa
+            mkdir -p build/output/Payload
+            cp -r build/KMTracker.xcarchive/Products/Applications/*.app build/output/Payload/
+            cd build/output
+            zip -qr KMTracker-Unsigned.ipa Payload
+            rm -rf Payload
+            echo "Created test unsigned .ipa at build/output/KMTracker-Unsigned.ipa"
+          fi
+
+      - name: 13. Upload IPA Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: KMTracker-iOS-IPA
+          path: build/output/*.ipa
+          retention-days: 14
+
+      - name: 14. Clean Up Keychain
+        if: always()
+        run: |
+          KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
+          if [ -f "$KEYCHAIN_PATH" ]; then
+            security delete-keychain "$KEYCHAIN_PATH" || true
+          fi
