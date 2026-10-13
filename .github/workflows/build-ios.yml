@@ -93,10 +93,15 @@ jobs:
         run: |
           npx expo prebuild --platform ios --clean
 
-      - name: 9. Install CocoaPods Dependencies
+      - name: 9. Verify CocoaPods Dependencies
         run: |
           cd ios
-          pod install --repo-update
+          if [ ! -d "Pods" ]; then
+            echo "Installing CocoaPods dependencies..."
+            pod install --repo-update
+          else
+            echo "CocoaPods dependencies already installed during prebuild."
+          fi
 
       - name: 10. Update ExportOptions.plist with Dynamic Config
         env:
@@ -125,14 +130,29 @@ jobs:
       - name: 11. Build and Archive iOS App (.xcarchive)
         run: |
           WORKSPACE_NAME=$(find ios -name "*.xcworkspace" -maxdepth 1 | head -n 1)
-          SCHEME_NAME=$(xcodebuild -workspace "$WORKSPACE_NAME" -list -json | grep -o '"targets" : \[[^]]*\]' | head -n 1 | sed -E 's/.*"([^"]+)".*/\1/' || echo "KMTracker")
-          echo "Building workspace: $WORKSPACE_NAME with scheme: $SCHEME_NAME"
+          WS_BASE=$(basename "$WORKSPACE_NAME" .xcworkspace)
+
+          # Extract matching scheme from workspace, or fallback to first scheme, or basename
+          SCHEME_NAME=$(xcodebuild -workspace "$WORKSPACE_NAME" -list 2>/dev/null | awk '/Schemes:/{flag=1; next} /^[[:space:]]*$/{flag=0} flag {gsub(/^[[:space:]]+/, ""); if ($0 == "'"$WS_BASE"'") {print; exit}}')
+          if [ -z "$SCHEME_NAME" ]; then
+            SCHEME_NAME=$(xcodebuild -workspace "$WORKSPACE_NAME" -list 2>/dev/null | awk '/Schemes:/{flag=1; next} /^[[:space:]]*$/{flag=0} flag {gsub(/^[[:space:]]+/, ""); print; exit}')
+          fi
+          if [ -z "$SCHEME_NAME" ] || [ "$SCHEME_NAME" = "*" ]; then
+            SCHEME_NAME="$WS_BASE"
+          fi
+          if [ -z "$SCHEME_NAME" ] || [ "$SCHEME_NAME" = "*" ]; then
+            SCHEME_NAME="KMTracker"
+          fi
+
+          echo "==> Target Workspace: $WORKSPACE_NAME"
+          echo "==> Resolved Scheme:  $SCHEME_NAME"
 
           if [ -n "${{ secrets.APPLE_CERTIFICATE_BASE64 }}" ]; then
             xcodebuild archive \
               -workspace "$WORKSPACE_NAME" \
               -scheme "$SCHEME_NAME" \
               -configuration "$BUILD_CONFIG" \
+              -destination "generic/platform=iOS" \
               -archivePath build/KMTracker.xcarchive \
               -allowProvisioningUpdates \
               CODE_SIGN_STYLE="Manual"
@@ -142,6 +162,7 @@ jobs:
               -workspace "$WORKSPACE_NAME" \
               -scheme "$SCHEME_NAME" \
               -configuration "$BUILD_CONFIG" \
+              -destination "generic/platform=iOS" \
               -archivePath build/KMTracker.xcarchive \
               CODE_SIGNING_ALLOWED=NO \
               CODE_SIGNING_REQUIRED=NO \
