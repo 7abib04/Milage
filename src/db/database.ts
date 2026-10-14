@@ -1,5 +1,6 @@
 import * as SQLite from 'expo-sqlite';
 import {
+  CREATE_ACTIVE_SESSION_TABLE,
   CREATE_ENTRIES_TABLE,
   CREATE_INDEX_CATEGORY,
   CREATE_INDEX_DATE,
@@ -18,21 +19,51 @@ export const getDB = (): SQLite.SQLiteDatabase => {
   return dbInstance;
 };
 
+export interface DBSessionRow {
+  id: number;
+  is_tracking: number;
+  is_paused: number;
+  category: string;
+  start_time_ms: number;
+  start_time_str: string;
+  elapsed_seconds: number;
+  distance_km: number;
+  last_lat: number | null;
+  last_lon: number | null;
+  current_speed_kmh: number;
+  segments_json: string;
+  notes: string | null;
+}
+
 export const initDatabase = async (): Promise<void> => {
   try {
     const db = getDB();
     await db.execAsync(CREATE_ENTRIES_TABLE);
+    await db.execAsync(CREATE_ACTIVE_SESSION_TABLE);
     await db.execAsync(CREATE_SETTINGS_TABLE);
     await db.execAsync(CREATE_INDEX_DATE);
     await db.execAsync(CREATE_INDEX_CATEGORY);
 
+    // Auto-migrate schema if columns are missing
+    try {
+      await db.execAsync('ALTER TABLE entries ADD COLUMN start_time TEXT;');
+    } catch {}
+    try {
+      await db.execAsync('ALTER TABLE entries ADD COLUMN end_time TEXT;');
+    } catch {}
+    try {
+      await db.execAsync('ALTER TABLE entries ADD COLUMN duration_seconds INTEGER DEFAULT 0;');
+    } catch {}
+    try {
+      await db.execAsync('ALTER TABLE entries ADD COLUMN segments_count INTEGER DEFAULT 1;');
+    } catch {}
+
     // Initialize default settings if not exists
-    const existingGoal = await db.getFirstAsync<{ value: string }>(
+    const existingUnit = await db.getFirstAsync<{ value: string }>(
       'SELECT value FROM settings WHERE key = ?',
-      'monthlyGoalKm'
+      'unit'
     );
-    if (!existingGoal) {
-      await db.runAsync('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)', 'monthlyGoalKm', '100');
+    if (!existingUnit) {
       await db.runAsync('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)', 'unit', 'km');
       await db.runAsync('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)', 'hapticsEnabled', 'true');
     }
@@ -42,11 +73,83 @@ export const initDatabase = async (): Promise<void> => {
   }
 };
 
+// ACTIVE TRIP SESSION PERSISTENCE (Safe in background and foreground)
+export const getActiveSessionSync = (): DBSessionRow | null => {
+  try {
+    const db = getDB();
+    return db.getFirstSync<DBSessionRow>('SELECT * FROM active_trip_session WHERE id = 1');
+  } catch {
+    return null;
+  }
+};
+
+export const saveActiveSession = async (session: Omit<DBSessionRow, 'id'>): Promise<void> => {
+  try {
+    const db = getDB();
+    await db.runAsync(
+      `INSERT OR REPLACE INTO active_trip_session 
+       (id, is_tracking, is_paused, category, start_time_ms, start_time_str, elapsed_seconds, distance_km, last_lat, last_lon, current_speed_kmh, segments_json, notes)
+       VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      session.is_tracking,
+      session.is_paused,
+      session.category,
+      session.start_time_ms,
+      session.start_time_str,
+      session.elapsed_seconds,
+      session.distance_km,
+      session.last_lat,
+      session.last_lon,
+      session.current_speed_kmh,
+      session.segments_json,
+      session.notes
+    );
+  } catch (err) {
+    console.error('Error saving active session:', err);
+  }
+};
+
+export const updateActiveSessionLocation = (
+  lat: number,
+  lon: number,
+  speedKmh: number,
+  addedKm: number,
+  newElapsedSeconds: number
+): void => {
+  try {
+    const db = getDB();
+    db.runSync(
+      `UPDATE active_trip_session 
+       SET distance_km = distance_km + ?, 
+           last_lat = ?, 
+           last_lon = ?, 
+           current_speed_kmh = ?, 
+           elapsed_seconds = ?
+       WHERE id = 1 AND is_tracking = 1 AND is_paused = 0`,
+      addedKm,
+      lat,
+      lon,
+      speedKmh,
+      newElapsedSeconds
+    );
+  } catch (err) {
+    console.error('Error updating session location in background:', err);
+  }
+};
+
+export const clearActiveSession = async (): Promise<void> => {
+  try {
+    const db = getDB();
+    await db.runAsync('DELETE FROM active_trip_session WHERE id = 1');
+  } catch (err) {
+    console.error('Error clearing active session:', err);
+  }
+};
+
 export const fetchAllEntries = async (): Promise<Entry[]> => {
   try {
     const db = getDB();
     const rows = await db.getAllAsync<Entry>(
-      'SELECT id, distance, category, date, notes, created_at FROM entries ORDER BY date DESC, id DESC'
+      'SELECT id, distance, category, date, notes, start_time, end_time, duration_seconds, segments_count, created_at FROM entries ORDER BY date DESC, id DESC'
     );
     return rows;
   } catch (error) {
@@ -59,16 +162,20 @@ export const insertEntry = async (entry: NewEntry): Promise<Entry> => {
   try {
     const db = getDB();
     const result = await db.runAsync(
-      'INSERT INTO entries (distance, category, date, notes) VALUES (?, ?, ?, ?)',
+      'INSERT INTO entries (distance, category, date, notes, start_time, end_time, duration_seconds, segments_count) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
       entry.distance,
       entry.category,
       entry.date,
-      entry.notes || ''
+      entry.notes || '',
+      entry.start_time || null,
+      entry.end_time || null,
+      entry.duration_seconds || 0,
+      entry.segments_count || 1
     );
 
     const insertedId = result.lastInsertRowId;
     const inserted = await db.getFirstAsync<Entry>(
-      'SELECT id, distance, category, date, notes, created_at FROM entries WHERE id = ?',
+      'SELECT id, distance, category, date, notes, start_time, end_time, duration_seconds, segments_count, created_at FROM entries WHERE id = ?',
       insertedId
     );
 
@@ -90,11 +197,15 @@ export const updateEntry = async (entry: Entry): Promise<void> => {
   try {
     const db = getDB();
     await db.runAsync(
-      'UPDATE entries SET distance = ?, category = ?, date = ?, notes = ? WHERE id = ?',
+      'UPDATE entries SET distance = ?, category = ?, date = ?, notes = ?, start_time = ?, end_time = ?, duration_seconds = ?, segments_count = ? WHERE id = ?',
       entry.distance,
       entry.category,
       entry.date,
       entry.notes || '',
+      entry.start_time || null,
+      entry.end_time || null,
+      entry.duration_seconds || 0,
+      entry.segments_count || 1,
       entry.id
     );
   } catch (error) {
@@ -133,14 +244,12 @@ export const fetchSettings = async (): Promise<AppSettings> => {
     }
 
     return {
-      monthlyGoalKm: map.monthlyGoalKm ? parseFloat(map.monthlyGoalKm) : 100,
       unit: (map.unit as 'km' | 'mi') || 'km',
       hapticsEnabled: map.hapticsEnabled !== 'false',
     };
   } catch (error) {
     console.error('Error fetching settings:', error);
     return {
-      monthlyGoalKm: 100,
       unit: 'km',
       hapticsEnabled: true,
     };
@@ -150,13 +259,6 @@ export const fetchSettings = async (): Promise<AppSettings> => {
 export const saveSettings = async (settings: Partial<AppSettings>): Promise<void> => {
   try {
     const db = getDB();
-    if (settings.monthlyGoalKm !== undefined) {
-      await db.runAsync(
-        'INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)',
-        'monthlyGoalKm',
-        String(settings.monthlyGoalKm)
-      );
-    }
     if (settings.unit !== undefined) {
       await db.runAsync(
         'INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)',
@@ -192,7 +294,6 @@ export const computeKPIStats = (entries: Entry[]): KPIStats => {
   let weekKm = 0;
   let longestTrip = 0;
 
-  // Streak calculation: unique dates with entries
   const dateSet = new Set<string>();
 
   for (const entry of entries) {
@@ -221,7 +322,6 @@ export const computeKPIStats = (entries: Entry[]): KPIStats => {
   const checkDate = new Date(now);
   checkDate.setHours(0, 0, 0, 0);
 
-  // Check if today has an entry, if not check if yesterday has an entry to keep streak alive
   const formatIsoDate = (d: Date) => {
     const yr = d.getFullYear();
     const mo = String(d.getMonth() + 1).padStart(2, '0');
@@ -291,7 +391,6 @@ export const computeChartData = (entries: Entry[], timeframe: Timeframe): ChartD
   const now = new Date();
 
   if (timeframe === 'week') {
-    // Last 7 days
     const result: ChartDataPoint[] = [];
     const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
@@ -317,10 +416,9 @@ export const computeChartData = (entries: Entry[], timeframe: Timeframe): ChartD
   }
 
   if (timeframe === 'month') {
-    // 4 weeks of current month
     const result: ChartDataPoint[] = [];
     const currentYear = now.getFullYear();
-    const currentMonth = now.getMonth(); // 0-indexed
+    const currentMonth = now.getMonth();
 
     for (let w = 1; w <= 4; w++) {
       const startDay = (w - 1) * 7 + 1;
@@ -341,7 +439,6 @@ export const computeChartData = (entries: Entry[], timeframe: Timeframe): ChartD
     return result;
   }
 
-  // Yearly (last 6 months or 12 months)
   const result: ChartDataPoint[] = [];
   const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 

@@ -11,11 +11,24 @@
       "bundleIdentifier": "com.kmtracker.app",
       "userInterfaceStyle": "dark",
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "UIBackgroundModes": [
+          "location"
+        ],
+        "NSLocationWhenInUseUsageDescription": "KM Tracker tracks your live trip distance in real time.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "KM Tracker tracks and accumulates your journey distance continuously even when the screen is locked or the app is minimized.",
+        "NSLocationAlwaysUsageDescription": "KM Tracker tracks and accumulates your journey distance continuously in the background."
       }
     },
     "android": {
       "package": "com.kmtracker.app",
+      "permissions": [
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_BACKGROUND_LOCATION",
+        "FOREGROUND_SERVICE",
+        "FOREGROUND_SERVICE_LOCATION"
+      ],
       "adaptiveIcon": {
         "backgroundColor": "#07090E",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -27,7 +40,16 @@
     },
     "plugins": [
       "expo-sqlite",
-      "expo-sharing"
+      "expo-sharing",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "KM Tracker tracks your live trip distance in real time.",
+          "locationAlwaysAndWhenInUsePermission": "KM Tracker tracks and accumulates your journey distance continuously even when the screen is locked.",
+          "isAndroidBackgroundLocationEnabled": true,
+          "isAndroidForegroundServiceEnabled": true
+        }
+      ]
     ]
   }
 }

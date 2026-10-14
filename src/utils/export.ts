@@ -39,12 +39,15 @@ export const exportEntriesToJSON = async (entries: Entry[]): Promise<boolean> =>
 
 export const exportEntriesToCSV = async (entries: Entry[]): Promise<boolean> => {
   try {
-    const header = ['ID', 'Distance (KM)', 'Category', 'Date', 'Notes', 'Created At'];
+    const header = ['ID', 'Distance (KM)', 'Category', 'Date', 'Start Time', 'End Time', 'Duration (Sec)', 'Notes', 'Created At'];
     const rows = entries.map((entry) => [
       entry.id,
       entry.distance,
       `"${entry.category}"`,
       `"${entry.date}"`,
+      `"${entry.start_time || ''}"`,
+      `"${entry.end_time || ''}"`,
+      entry.duration_seconds || 0,
       `"${(entry.notes || '').replace(/"/g, '""')}"`,
       `"${entry.created_at || ''}"`,
     ]);

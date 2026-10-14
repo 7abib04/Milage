@@ -14,8 +14,6 @@ import { Colors } from '../theme/colors';
 import { GlassCard } from '../components/GlassCard';
 import { ActivitySparkline } from '../components/ActivitySparkline';
 import { CategoryBreakdown } from '../components/CategoryBreakdown';
-import { MilestoneBadge } from '../components/MilestoneBadge';
-import { CelebrationModal } from '../components/CelebrationModal';
 import { computeChartData } from '../db/database';
 import { triggerHaptic } from '../utils/haptics';
 
@@ -27,9 +25,8 @@ const TIMEFRAMES: { key: Timeframe; label: string }[] = [
 
 export const AnalyticsScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
-  const { entries, stats, categoryStats, milestones, settings } = useTracker();
+  const { entries, stats, categoryStats, settings } = useTracker();
   const [timeframe, setTimeframe] = useState<Timeframe>('week');
-  const [testMilestone, setTestMilestone] = useState<any | null>(null);
 
   const chartData = computeChartData(entries, timeframe);
 
@@ -40,20 +37,17 @@ export const AnalyticsScreen: React.FC = () => {
 
   return (
     <View style={styles.container}>
-      {/* Background Ambience */}
-      <View style={styles.ambientGlow} />
-
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={[
           styles.scrollContent,
-          { paddingTop: insets.top + 16, paddingBottom: 110 },
+          { paddingTop: insets.top + 16, paddingBottom: 100 },
         ]}
       >
         {/* Header */}
         <View style={styles.headerRow}>
           <View>
-            <Text style={styles.screenEyebrow}>METRICS & INSIGHTS</Text>
+            <Text style={styles.screenEyebrow}>ACTIVITY METRICS</Text>
             <Text style={styles.screenTitle}>Analytics</Text>
           </View>
         </View>
@@ -84,17 +78,17 @@ export const AnalyticsScreen: React.FC = () => {
           })}
         </View>
 
-        {/* Primary Activity Chart Card */}
+        {/* Distance Trajectory Chart Card */}
         <GlassCard style={styles.chartCard} borderHighlight glowColor="rgba(0, 242, 254, 0.15)">
           <View style={styles.chartHeaderRow}>
             <View>
-              <Text style={styles.chartTitle}>Distance Trajectory</Text>
+              <Text style={styles.chartTitle}>Distance Overview</Text>
               <Text style={styles.chartSubtitle}>
                 {timeframe === 'week'
-                  ? 'Daily recorded kilometers over the last 7 days'
+                  ? 'Last 7 days daily volume'
                   : timeframe === 'month'
-                  ? 'Weekly aggregates for the current month'
-                  : 'Monthly volume across the past 6 months'}
+                  ? 'Weekly volume this month'
+                  : 'Last 6 months volume'}
               </Text>
             </View>
           </View>
@@ -102,22 +96,22 @@ export const AnalyticsScreen: React.FC = () => {
           <ActivitySparkline
             data={chartData}
             unit={settings.unit}
-            height={150}
+            height={140}
             barColor="rgba(0, 242, 254, 0.5)"
             gradientCap="#00F2FE"
           />
         </GlassCard>
 
-        {/* Personal Records & Highlights Grid */}
+        {/* Personal Records Cards */}
         <View style={styles.sectionMargin}>
-          <Text style={styles.sectionHeader}>Personal Records</Text>
+          <Text style={styles.sectionHeader}>Journey Records</Text>
 
           <View style={styles.recordsGrid}>
             <GlassCard style={styles.recordCard}>
               <View style={[styles.recordIconWrap, { backgroundColor: 'rgba(251, 191, 36, 0.15)' }]}>
-                <Ionicons name="trophy-outline" size={20} color="#FBBF24" />
+                <Ionicons name="trophy-outline" size={18} color="#FBBF24" />
               </View>
-              <Text style={styles.recordLabel}>LONGEST SINGLE TRIP</Text>
+              <Text style={styles.recordLabel}>LONGEST TRIP</Text>
               <Text style={styles.recordValue}>
                 {stats.longestTrip} <Text style={styles.recordUnit}>{settings.unit}</Text>
               </Text>
@@ -125,11 +119,21 @@ export const AnalyticsScreen: React.FC = () => {
 
             <GlassCard style={styles.recordCard}>
               <View style={[styles.recordIconWrap, { backgroundColor: 'rgba(16, 185, 129, 0.15)' }]}>
-                <Ionicons name="navigate-outline" size={20} color="#10B981" />
+                <Ionicons name="navigate-outline" size={18} color="#10B981" />
               </View>
               <Text style={styles.recordLabel}>TOTAL JOURNEYS</Text>
               <Text style={styles.recordValue}>
                 {stats.totalTrips} <Text style={styles.recordUnit}>trips</Text>
+              </Text>
+            </GlassCard>
+
+            <GlassCard style={styles.recordCard}>
+              <View style={[styles.recordIconWrap, { backgroundColor: 'rgba(168, 85, 247, 0.15)' }]}>
+                <Ionicons name="analytics-outline" size={18} color="#A855F7" />
+              </View>
+              <Text style={styles.recordLabel}>AVERAGE TRIP</Text>
+              <Text style={styles.recordValue}>
+                {stats.averageTrip} <Text style={styles.recordUnit}>{settings.unit}</Text>
               </Text>
             </GlassCard>
           </View>
@@ -138,33 +142,13 @@ export const AnalyticsScreen: React.FC = () => {
         {/* Category Breakdown Section */}
         <GlassCard style={styles.sectionMargin}>
           <View style={styles.cardHeader}>
-            <Text style={styles.cardTitle}>Activity Distribution</Text>
-            <Text style={styles.cardSubtitle}>Breakdown by movement type</Text>
+            <Text style={styles.cardTitle}>Movement Breakdown</Text>
+            <Text style={styles.cardSubtitle}>Distribution by activity type</Text>
           </View>
 
           <CategoryBreakdown stats={categoryStats} unit={settings.unit} />
         </GlassCard>
-
-        {/* Milestones & Badges */}
-        <View style={styles.sectionMargin}>
-          <View style={styles.milestoneHeaderRow}>
-            <Text style={styles.sectionHeader}>Milestones & Achievements</Text>
-            <Text style={styles.milestoneUnlockedCount}>
-              {milestones.filter((m) => m.isUnlocked).length} / {milestones.length} Unlocked
-            </Text>
-          </View>
-
-          {milestones.map((m) => (
-            <MilestoneBadge key={m.id} milestone={m} unit={settings.unit} />
-          ))}
-        </View>
       </ScrollView>
-
-      {/* Test celebration modal preview */}
-      <CelebrationModal
-        milestone={testMilestone}
-        onDismiss={() => setTestMilestone(null)}
-      />
     </View>
   );
 };
@@ -174,22 +158,10 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: Colors.background,
   },
-  ambientGlow: {
-    position: 'absolute',
-    top: 100,
-    right: -60,
-    width: 250,
-    height: 250,
-    borderRadius: 125,
-    backgroundColor: 'rgba(0, 242, 254, 0.08)',
-  },
   scrollContent: {
-    paddingHorizontal: 18,
+    paddingHorizontal: 16,
   },
   headerRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
     marginBottom: 16,
   },
   screenEyebrow: {
@@ -199,7 +171,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.8,
   },
   screenTitle: {
-    fontSize: 30,
+    fontSize: 28,
     fontWeight: '900',
     color: Colors.textPrimary,
     letterSpacing: -0.5,
@@ -207,17 +179,17 @@ const styles = StyleSheet.create({
   timeframeSegment: {
     flexDirection: 'row',
     backgroundColor: 'rgba(255, 255, 255, 0.06)',
-    borderRadius: 18,
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: Colors.glassBorder,
     padding: 4,
-    marginBottom: 18,
+    marginBottom: 16,
   },
   segmentButton: {
     flex: 1,
-    paddingVertical: 10,
+    paddingVertical: 9,
     alignItems: 'center',
-    borderRadius: 14,
+    borderRadius: 12,
   },
   segmentButtonActive: {
     backgroundColor: 'rgba(0, 242, 254, 0.18)',
@@ -234,14 +206,14 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   chartCard: {
-    marginBottom: 20,
-    borderRadius: 24,
+    marginBottom: 18,
+    borderRadius: 22,
   },
   chartHeaderRow: {
-    marginBottom: 14,
+    marginBottom: 12,
   },
   chartTitle: {
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: '800',
     color: Colors.textPrimary,
   },
@@ -251,53 +223,53 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   sectionMargin: {
-    marginBottom: 20,
+    marginBottom: 18,
   },
   sectionHeader: {
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: '800',
     color: Colors.textPrimary,
-    marginBottom: 12,
+    marginBottom: 10,
   },
   recordsGrid: {
     flexDirection: 'row',
-    gap: 12,
+    gap: 8,
   },
   recordCard: {
     flex: 1,
-    borderRadius: 20,
-    padding: 16,
+    borderRadius: 18,
+    padding: 12,
   },
   recordIconWrap: {
-    width: 38,
-    height: 38,
-    borderRadius: 12,
+    width: 32,
+    height: 32,
+    borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 10,
+    marginBottom: 8,
   },
   recordLabel: {
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: '800',
     color: Colors.textTertiary,
-    letterSpacing: 0.6,
+    letterSpacing: 0.5,
     marginBottom: 4,
   },
   recordValue: {
-    fontSize: 20,
+    fontSize: 16,
     fontWeight: '900',
     color: Colors.textPrimary,
   },
   recordUnit: {
-    fontSize: 13,
+    fontSize: 11,
     fontWeight: '600',
     color: Colors.textSecondary,
   },
   cardHeader: {
-    marginBottom: 16,
+    marginBottom: 14,
   },
   cardTitle: {
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: '800',
     color: Colors.textPrimary,
   },
@@ -305,16 +277,5 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: Colors.textTertiary,
     marginTop: 2,
-  },
-  milestoneHeaderRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  milestoneUnlockedCount: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#FBBF24',
   },
 });

@@ -80,74 +80,32 @@ export const SettingsScreen: React.FC = () => {
     );
   };
 
-  const adjustGoal = async (delta: number) => {
-    triggerHaptic('light');
-    const newGoal = Math.max(10, settings.monthlyGoalKm + delta);
-    await updateSettings({ monthlyGoalKm: newGoal });
-  };
-
   return (
     <View style={styles.container}>
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={[
           styles.scrollContent,
-          { paddingTop: insets.top + 16, paddingBottom: 110 },
+          { paddingTop: insets.top + 16, paddingBottom: 100 },
         ]}
       >
         {/* Header */}
         <View style={styles.headerRow}>
           <View>
-            <Text style={styles.screenEyebrow}>PREFERENCES & DATA</Text>
+            <Text style={styles.screenEyebrow}>APP CONFIGURATION</Text>
             <Text style={styles.screenTitle}>Settings</Text>
           </View>
         </View>
 
-        {/* Goal Setting Section */}
-        <GlassCard style={styles.sectionCard}>
-          <View style={styles.cardHeader}>
-            <View style={[styles.iconWrap, { backgroundColor: 'rgba(0, 242, 254, 0.15)' }]}>
-              <Ionicons name="flag-outline" size={20} color="#00F2FE" />
-            </View>
-            <View style={styles.cardHeaderTextWrap}>
-              <Text style={styles.cardTitle}>Monthly Distance Goal</Text>
-              <Text style={styles.cardSubtitle}>Drives the dashboard progress ring</Text>
-            </View>
-          </View>
-
-          <View style={styles.goalControlRow}>
-            <Pressable
-              onPress={() => adjustGoal(-10)}
-              style={styles.stepperBtn}
-            >
-              <Ionicons name="remove" size={20} color={Colors.textPrimary} />
-            </Pressable>
-
-            <View style={styles.goalValueDisplay}>
-              <Text style={styles.goalValueText}>
-                {settings.monthlyGoalKm}
-                <Text style={styles.goalUnitText}> {settings.unit}</Text>
-              </Text>
-            </View>
-
-            <Pressable
-              onPress={() => adjustGoal(10)}
-              style={styles.stepperBtn}
-            >
-              <Ionicons name="add" size={20} color={Colors.textPrimary} />
-            </Pressable>
-          </View>
-        </GlassCard>
-
         {/* Units & Preferences */}
         <GlassCard style={styles.sectionCard}>
           <View style={styles.cardHeader}>
-            <View style={[styles.iconWrap, { backgroundColor: 'rgba(168, 85, 247, 0.15)' }]}>
-              <Ionicons name="options-outline" size={20} color="#A855F7" />
+            <View style={[styles.iconWrap, { backgroundColor: 'rgba(0, 242, 254, 0.15)' }]}>
+              <Ionicons name="options-outline" size={20} color="#00F2FE" />
             </View>
             <View style={styles.cardHeaderTextWrap}>
-              <Text style={styles.cardTitle}>General Preferences</Text>
-              <Text style={styles.cardSubtitle}>App display and tactile feedback</Text>
+              <Text style={styles.cardTitle}>Preferences</Text>
+              <Text style={styles.cardSubtitle}>Units and tactile feedback</Text>
             </View>
           </View>
 
@@ -190,7 +148,7 @@ export const SettingsScreen: React.FC = () => {
           <View style={styles.preferenceRow}>
             <View>
               <Text style={styles.prefTitle}>Haptic Feedback</Text>
-              <Text style={styles.prefSubtitle}>Tactile response on button taps & actions</Text>
+              <Text style={styles.prefSubtitle}>Vibrations on taps & live actions</Text>
             </View>
 
             <Switch
@@ -210,7 +168,7 @@ export const SettingsScreen: React.FC = () => {
             </View>
             <View style={styles.cardHeaderTextWrap}>
               <Text style={styles.cardTitle}>Data Export & Backup</Text>
-              <Text style={styles.cardSubtitle}>Export your records anytime</Text>
+              <Text style={styles.cardSubtitle}>Export your trips anytime</Text>
             </View>
           </View>
 
@@ -248,13 +206,12 @@ export const SettingsScreen: React.FC = () => {
             </View>
             <View style={styles.cardHeaderTextWrap}>
               <Text style={[styles.cardTitle, { color: Colors.danger }]}>Danger Zone</Text>
-              <Text style={styles.cardSubtitle}>Irreversible database reset</Text>
+              <Text style={styles.cardSubtitle}>Irreversible local reset</Text>
             </View>
           </View>
 
           <Text style={styles.dangerWarning}>
-            Deleting all entries will clear your local SQLite database permanently. Export a backup
-            first if needed.
+            Permanently clear all recorded entries from local SQLite storage.
           </Text>
 
           <GlassButton
@@ -265,13 +222,13 @@ export const SettingsScreen: React.FC = () => {
           />
         </GlassCard>
 
-        {/* Privacy & App Info */}
+        {/* Privacy Note */}
         <View style={styles.footerWrap}>
           <View style={styles.privacyBadge}>
             <Ionicons name="shield-checkmark" size={14} color="#10B981" />
             <Text style={styles.privacyText}>100% Offline-First SQLite Storage</Text>
           </View>
-          <Text style={styles.versionText}>KM Tracker for iOS • Version 1.0.0 (Build 1)</Text>
+          <Text style={styles.versionText}>KM Tracker • Local Privacy</Text>
         </View>
       </ScrollView>
     </View>
@@ -284,10 +241,10 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.background,
   },
   scrollContent: {
-    paddingHorizontal: 18,
+    paddingHorizontal: 16,
   },
   headerRow: {
-    marginBottom: 18,
+    marginBottom: 16,
   },
   screenEyebrow: {
     fontSize: 11,
@@ -296,18 +253,18 @@ const styles = StyleSheet.create({
     letterSpacing: 0.8,
   },
   screenTitle: {
-    fontSize: 30,
+    fontSize: 28,
     fontWeight: '900',
     color: Colors.textPrimary,
     letterSpacing: -0.5,
   },
   sectionCard: {
     marginBottom: 16,
-    borderRadius: 24,
+    borderRadius: 22,
   },
   dangerCard: {
-    marginBottom: 24,
-    borderRadius: 24,
+    marginBottom: 20,
+    borderRadius: 22,
     borderColor: Colors.dangerBorder,
   },
   cardHeader: {
@@ -316,9 +273,9 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   iconWrap: {
-    width: 40,
-    height: 40,
-    borderRadius: 14,
+    width: 38,
+    height: 38,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
@@ -335,37 +292,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: Colors.textTertiary,
     marginTop: 2,
-  },
-  goalControlRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: Colors.glassBorder,
-    padding: 8,
-  },
-  stepperBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 14,
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  goalValueDisplay: {
-    alignItems: 'center',
-  },
-  goalValueText: {
-    fontSize: 28,
-    fontWeight: '900',
-    color: '#00F2FE',
-  },
-  goalUnitText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: Colors.textSecondary,
   },
   preferenceRow: {
     flexDirection: 'row',
@@ -417,7 +343,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: Colors.textSecondary,
     lineHeight: 18,
-    marginBottom: 16,
+    marginBottom: 14,
   },
   footerWrap: {
     alignItems: 'center',
@@ -431,7 +357,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 14,
-    marginBottom: 8,
+    marginBottom: 6,
   },
   privacyText: {
     color: '#10B981',

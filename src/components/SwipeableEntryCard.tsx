@@ -144,6 +144,19 @@ export const SwipeableEntryCard: React.FC<SwipeableEntryCardProps> = ({
 
               <View style={styles.rowBottom}>
                 <Text style={styles.dateText}>{formatDateDisplay(entry.date)}</Text>
+                {entry.start_time && entry.end_time ? (
+                  <View style={styles.timeBadge}>
+                    <Ionicons name="time-outline" size={11} color={Colors.textTertiary} />
+                    <Text style={styles.timeText}>
+                      {entry.start_time.slice(0, 5)} - {entry.end_time.slice(0, 5)}
+                    </Text>
+                  </View>
+                ) : null}
+                {entry.segments_count && entry.segments_count > 1 ? (
+                  <View style={styles.segmentBadge}>
+                    <Text style={styles.segmentText}>{entry.segments_count} legs</Text>
+                  </View>
+                ) : null}
                 {entry.notes ? (
                   <Text style={styles.notesText} numberOfLines={1} ellipsizeMode="tail">
                     {entry.notes}
@@ -256,5 +269,32 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
     flex: 1,
     fontStyle: 'italic',
+  },
+  timeBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: 'rgba(255, 255, 255, 0.07)',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 8,
+  },
+  timeText: {
+    fontSize: 10,
+    color: Colors.textTertiary,
+    fontWeight: '600',
+  },
+  segmentBadge: {
+    backgroundColor: 'rgba(167, 139, 250, 0.15)',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(167, 139, 250, 0.3)',
+  },
+  segmentText: {
+    fontSize: 10,
+    color: '#A78BFA',
+    fontWeight: '700',
   },
 });
